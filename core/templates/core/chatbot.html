@@ -1,0 +1,95 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width:700px;'>
+    <h2 class='mb-4'>🤖 24/7 Support Chat</h2>
+    <div id='chatbox' style='height:400px; overflow-y: scroll; background:#f8fafc; padding:15px; border-radius:12px; border:2px solid #e2e8f0;'></div>
+    <div class='input-group mt-3'>
+        <input type='text' id='userInput' class='form-control' placeholder='Share your feelings...'>
+        <button class='btn btn-primary' id='sendBtn'>Send</button>
+    </div>
+    
+    <!-- Popup Modal for Recommendations -->
+    <div id='recommendationModal' style='display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:30px; border-radius:20px; box-shadow:0 20px 60px rgba(0,0,0,0.3); z-index:9999; max-width:600px; width:90%;'>
+        <h3 style='color:#6C63FF;'>✨ Take a Moment for Yourself</h3>
+        <p>Complete this activity now and earn bonus points!</p>
+        <div id='recommendationContent'></div>
+        <button class='btn btn-secondary mt-3' onclick='closeModal()'>Close</button>
+    </div>
+    <div id='modalOverlay' style='display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998;' onclick='closeModal()'></div>
+</div>
+
+<script>
+    const chatbox = document.getElementById('chatbox');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    function appendMessage(sender, message) {
+        const div = document.createElement('div');
+        div.classList.add('mb-3');
+        div.style.textAlign = sender === 'You' ? 'right' : 'left';
+        
+        const bubble = document.createElement('div');
+        bubble.style.display = 'inline-block';
+        bubble.style.maxWidth = '70%';
+        bubble.style.padding = '12px 18px';
+        bubble.style.borderRadius = '18px';
+        bubble.style.background = sender === 'You' ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : '#f1f5f9';
+        bubble.style.color = sender === 'You' ? 'white' : '#1e293b';
+        bubble.innerHTML = '<strong>' + sender + ':</strong> ' + message;
+        
+        div.appendChild(bubble);
+        chatbox.appendChild(div);
+        chatbox.scrollTop = chatbox.scrollHeight;
+    }
+    
+    function showRecommendationPopup(recommendations) {
+        if (recommendations.length === 0) return;
+        
+        const rec = recommendations[0];
+        const content = document.getElementById('recommendationContent');
+        content.innerHTML = 
+            <h5></h5>
+            <iframe width='100%' height='300' src='' frameborder='0' allowfullscreen></iframe>
+            <p class='mt-2'><strong>Bonus: + points</strong></p>
+            <a href='/complete-recommendation//' class='btn btn-success w-100'>I Completed This! 🎉</a>
+        ;
+        
+        document.getElementById('recommendationModal').style.display = 'block';
+        document.getElementById('modalOverlay').style.display = 'block';
+    }
+    
+    function closeModal() {
+        document.getElementById('recommendationModal').style.display = 'none';
+        document.getElementById('modalOverlay').style.display = 'none';
+    }
+
+    sendBtn.addEventListener('click', () => {
+        const message = userInput.value.trim();
+        if (!message) return;
+        appendMessage('You', message);
+        userInput.value = '';
+        
+        fetch('{% url 'chatbot_api' %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message})
+        })
+        .then(response => response.json())
+        .then(data => {
+            appendMessage('Support', data.response);
+            
+            // Show popup if recommendations exist
+            if (data.recommendations && data.recommendations.length > 0) {
+                setTimeout(() => showRecommendationPopup(data.recommendations), 1000);
+            }
+        })
+        .catch(() => {
+            appendMessage('Support', 'Sorry, there was an error.');
+        });
+    });
+
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendBtn.click();
+    });
+</script>
+{% endblock %}

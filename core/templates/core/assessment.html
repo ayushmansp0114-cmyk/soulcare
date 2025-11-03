@@ -1,0 +1,19 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main'>
+    <h2 class='mb-4'>📋 Mental Health Assessment</h2>
+    <form method='post'>
+        {% csrf_token %}
+        {% for q in questions %}
+        <div class='card mb-3 p-3'>
+            <p class='fw-bold mb-2'>{{ forloop.counter }}. {{ q.question }}</p>
+            <label><input type='radio' name='q{{ forloop.counter0 }}' value='0' required> Not at all</label>
+            <label class='ms-2'><input type='radio' name='q{{ forloop.counter0 }}' value='1'> Several days</label>
+            <label class='ms-2'><input type='radio' name='q{{ forloop.counter0 }}' value='2'> More than half</label>
+            <label class='ms-2'><input type='radio' name='q{{ forloop.counter0 }}' value='3'> Nearly every day</label>
+        </div>
+        {% endfor %}
+        <button type='submit' class='btn btn-success w-100 mt-3'>Submit Assessment</button>
+    </form>
+</div>
+{% endblock %}

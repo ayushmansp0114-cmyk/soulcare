@@ -1,0 +1,1700 @@
+﻿from core.models import LoginActivity, AdminApprovalRequest
+
+def is_bot_access(request):
+    '''Detect bot access patterns'''
+    user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
+    bot_patterns = ['bot', 'crawler', 'spider', 'scraper', 'selenium', 'automation', 'headless']
+    for pattern in bot_patterns:
+        if pattern in user_agent:
+            return True
+    return False
+
+def login_view(request):
+    '''Enhanced login with bot detection and approval system'''
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        ip_address = request.META.get('REMOTE_ADDR', 'Unknown')
+        user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown')
+        is_bot = is_bot_access(request)
+        user = authenticate(request, username=username, password=password)
+        
+        if is_bot:
+            LoginActivity.objects.create(username=username, ip_address=ip_address, user_agent=user_agent, role='bot', status='blocked_bot', is_bot=True)
+            return render(request, 'core/blocked_bot.html')
+        
+        if user is not None:
+            try:
+                profile = UserProfile.objects.get(user=user)
+                role = profile.role
+            except:
+                role = 'unknown'
+            
+            needs_approval = False
+            if role == 'doctor':
+                try:
+                    doctor = Doctor.objects.get(user=user)
+                    needs_approval = doctor.status != 'approved'
+                except:
+                    pass
+            elif role == 'institute':
+                try:
+                    institute = Institute.objects.get(manager=user)
+                    needs_approval = institute.status != 'approved'
+                except:
+                    pass
+            
+            if needs_approval:
+                login_act = LoginActivity.objects.create(user=user, username=username, ip_address=ip_address, user_agent=user_agent, role=role, status='pending', is_bot=False)
+                AdminApprovalRequest.objects.get_or_create(login_activity=login_act, defaults={'reason': f'{role} account pending verification'})
+                return render(request, 'core/pending_approval.html', {'user': user, 'role': role.title()})
+            
+            LoginActivity.objects.create(user=user, username=username, ip_address=ip_address, user_agent=user_agent, role=role, status='success', is_bot=False)
+            login(request, user)
+            
+            if role == 'moderator':
+                return redirect('moderator_dashboard')
+            elif role == 'user':
+                return redirect('dashboard')
+            elif role == 'doctor':
+                return redirect('doctor_dashboard')
+            elif role == 'institute':
+                return redirect('institute_dashboard')
+            else:
+                return redirect('dashboard')
+        else:
+            LoginActivity.objects.create(username=username, ip_address=ip_address, user_agent=user_agent, role='unknown', status='failed', is_bot=False)
+            messages.error(request, '❌ Invalid credentials!')
+    
+    return render(request, 'core/login.html')
+from django.contrib.auth.views import PasswordResetView, PasswordResetConfirmView, PasswordResetDoneView, PasswordResetCompleteView
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.db.models import Count, Avg, Q, Sum
+from django.utils import timezone
+from django.contrib.auth.models import User
+from datetime import datetime, timedelta
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import *
+from .forms import *
+import random
+import json
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.db.models import Count, Avg, Q, Sum
+from django.utils import timezone
+from django.contrib.auth.models import User
+from datetime import datetime, timedelta
+from .models import *
+from .forms import *
+from .forms import *
+from .ml_utils import detect_bot_registration, generate_activity_recommendations
+import random
+import json
+
+# ============= PUBLIC VIEWS =============
+
+def home(request):
+    return render(request, 'core/home.html')
+
+def register_view(request):
+    if request.method == 'POST':
+        form = UserRegistrationForm(request.POST)
+        if form.is_valid():
+            # Check if institute exists
+            institute_code = form.cleaned_data.get('institute_code')
+            try:
+                institute = Institute.objects.get(registration_number=institute_code, status='approved')
+            except Institute.DoesNotExist:
+                messages.error(request, 'Invalid institute code or institute not approved.')
+                return render(request, 'core/register.html', {'form': form})
+            
+            # Create user
+            user = form.save(commit=False)
+            user.save()
+            
+            # Run ML bot detection
+            is_bot, score, reasons = detect_bot_registration(
+                user.username,
+                user.email,
+                user.first_name,
+                user.last_name,
+                form.cleaned_data.get('age'),
+                form.cleaned_data.get('phone')
+            )
+            
+            # Create user profile
+            profile = UserProfile.objects.create(
+                user=user,
+                role='user',
+                age=form.cleaned_data.get('age'),
+                weight=form.cleaned_data.get('weight'),
+                height=form.cleaned_data.get('height'),
+                phone=form.cleaned_data.get('phone'),
+                institute=institute,
+                is_approved=False,
+                is_bot_suspected=is_bot,
+                registration_data=json.dumps({
+                    'ml_score': score,
+                    'reasons': reasons
+                })
+            )
+            
+            # Create approval request
+            status = 'suspicious' if is_bot else 'pending'
+            UserApproval.objects.create(
+                user=user,
+                institute=institute,
+                status=status,
+                ml_score=score,
+                is_bot_suspected=is_bot,
+                notes=f'ML Detection: {reasons}' if is_bot else ''
+            )
+            
+            # Generate activity recommendations
+            activities = generate_activity_recommendations(
+                form.cleaned_data.get('age'),
+                form.cleaned_data.get('weight') or 65,
+                form.cleaned_data.get('height') or 170
+            )
+            for activity in activities[:3]:
+                ActivityRecommendation.objects.create(
+                    user=user,
+                    activity_type=activity['type'],
+                    title=activity['title'],
+                    description=activity['description'],
+                    duration=activity['duration'],
+                    difficulty=activity['difficulty']
+                )
+            
+            messages.success(request, 'Registration submitted! Wait for institute approval.')
+            return redirect('login')
+    else:
+        form = UserRegistrationForm()
+    return render(request, 'core/register.html', {'form': form})
+
+def institute_register_view(request):
+    if request.method == 'POST':
+        form = InstituteRegistrationForm(request.POST, request.FILES)
+        if form.is_valid():
+            # Create manager user
+            username = form.cleaned_data['username']
+            email = form.cleaned_data['email']
+            password = form.cleaned_data['password']
+            first_name = form.cleaned_data['first_name']
+            last_name = form.cleaned_data['last_name']
+            
+            if User.objects.filter(username=username).exists():
+                messages.error(request, 'Username already exists.')
+                return render(request, 'core/institute_register.html', {'form': form})
+            
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            
+            # Create institute
+            institute = form.save(commit=False)
+            institute.manager = user
+            institute.save()
+            
+            # Create profile
+            UserProfile.objects.create(user=user, role='institute')
+            
+            messages.success(request, 'Institute registration submitted! Wait for moderator approval.')
+            return redirect('login')
+    else:
+        form = InstituteRegistrationForm()
+    return render(request, 'core/institute_register.html', {'form': form})
+
+
+            
+            if profile.role == 'institute':
+                try:
+                    institute = Institute.objects.get(manager=user)
+                    if institute.status != 'approved':
+                        messages.error(request, 'Your institute is pending moderator approval.')
+                        return render(request, 'core/login.html')
+                except Institute.DoesNotExist:
+                    messages.error(request, 'Institute not found.')
+                    return render(request, 'core/login.html')
+            
+            if profile.role == 'doctor':
+                try:
+                    doctor = Doctor.objects.get(user=user)
+                    if doctor.status != 'approved':
+                        messages.error(request, 'Your doctor application is pending approval.')
+                        return render(request, 'core/login.html')
+                except Doctor.DoesNotExist:
+                    messages.error(request, 'Doctor profile not found.')
+                    return render(request, 'core/login.html')
+            
+            login(request, user)
+            
+            # Redirect based on role
+            if profile.role == 'moderator':
+                return redirect('moderator_dashboard')
+            elif profile.role == 'institute':
+                return redirect('institute_dashboard')
+            elif profile.role == 'doctor':
+                return redirect('doctor_dashboard')
+            else:
+                return redirect('dashboard')
+        else:
+            messages.error(request, 'Invalid credentials')
+    return render(request, 'core/login.html')
+
+def logout_view(request):
+    logout(request)
+    return redirect('home')
+
+# ============= USER DASHBOARD =============
+
+@login_required
+def dashboard(request):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'user':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    if not profile.is_approved:
+        return render(request, 'core/pending_approval.html')
+    
+    today = timezone.now().date()
+    
+    # Calculate streak
+    checkins = CheckIn.objects.filter(user=request.user).order_by('-date')
+    current_streak = 0
+    if checkins.exists():
+        last_date = checkins.first().date
+        if last_date == today or last_date == today - timedelta(days=1):
+            temp_date = last_date
+            for checkin in checkins:
+                if checkin.date == temp_date:
+                    current_streak += 1
+                    temp_date -= timedelta(days=1)
+                elif checkin.date < temp_date:
+                    break
+    
+    profile.current_streak = current_streak
+    profile.longest_streak = max(profile.longest_streak, current_streak)
+    profile.save()
+    
+    # Today's check-in
+    today_checkin = CheckIn.objects.filter(user=request.user, date=today).first()
+    
+    # Recent check-ins for chart
+    recent_checkins = CheckIn.objects.filter(user=request.user)[:7]
+    
+    # Latest assessment
+    latest_assessment = Assessment.objects.filter(user=request.user).first()
+    
+    # Random Gita verse
+    gita_verse = GitaVerse.objects.order_by('?').first()
+    
+    # Activity recommendations
+    recommendations = ActivityRecommendation.objects.filter(user=request.user, completed=False)[:3]
+    
+    # Badges
+    badges = Badge.objects.filter(user=request.user)
+    
+    # Institute leaderboard position
+    leaderboard_position = None
+    if profile.institute:
+        leaderboard = InstituteLeaderboard.objects.filter(institute=profile.institute).order_by('-total_points')
+        for idx, item in enumerate(leaderboard, 1):
+            if item.user == request.user:
+                leaderboard_position = idx
+                break
+    
+    context = {
+        'profile': profile,
+        'today_checkin': today_checkin,
+        'current_streak': current_streak,
+        'recent_checkins': recent_checkins,
+        'latest_assessment': latest_assessment,
+        'gita_verse': gita_verse,
+        'badges': badges,
+        'recommendations': recommendations,
+        'leaderboard_position': leaderboard_position,
+    }
+    return render(request, 'core/dashboard.html', context)
+
+@login_required
+def checkin_view(request):
+    today = timezone.now().date()
+    existing_checkin = CheckIn.objects.filter(user=request.user, date=today).first()
+    
+    if request.method == 'POST':
+        if existing_checkin:
+            messages.warning(request, 'You have already checked in today!')
+            return redirect('dashboard')
+        
+        form = CheckInForm(request.POST)
+        if form.is_valid():
+            checkin = form.save(commit=False)
+            checkin.user = request.user
+            checkin.date = today
+            checkin.save()
+            
+            # Award points
+            profile = UserProfile.objects.get(user=request.user)
+            profile.points += 5
+            profile.last_checkin_date = today
+            profile.update_level()
+            
+            # Update leaderboard
+            if profile.institute:
+                leaderboard, created = InstituteLeaderboard.objects.get_or_create(
+                    institute=profile.institute,
+                    user=request.user,
+                    defaults={'total_points': profile.points}
+                )
+                if not created:
+                    leaderboard.total_points = profile.points
+                    leaderboard.save()
+            
+            # Check and award streak badges
+            check_and_award_badges(request.user, profile.current_streak)
+            
+            messages.success(request, 'Check-in completed! +5 points earned.')
+            return redirect('dashboard')
+    else:
+        form = CheckInForm()
+    
+    return render(request, 'core/checkin.html', {'form': form, 'existing_checkin': existing_checkin})
+
+def check_and_award_badges(user, streak):
+    profile = UserProfile.objects.get(user=user)
+    badge_configs = {
+        'streak_3': (3, 30),
+        'streak_7': (7, 70),
+        'streak_14': (14, 140),
+        'streak_30': (30, 300),
+    }
+    
+    for badge_type, (required_streak, points) in badge_configs.items():
+        if streak >= required_streak:
+            badge, created = Badge.objects.get_or_create(
+                user=user,
+                badge_type=badge_type,
+                defaults={'points_awarded': points}
+            )
+            if created:
+                messages.info(user, f'New badge unlocked: {badge.get_badge_type_display()}!')
+
+@login_required
+def assessment_view(request):
+    questions = get_assessment_questions()
+    
+    if request.method == 'POST':
+        answers = []
+        for i in range(len(questions)):
+            answer = request.POST.get(f'q{i}')
+            if answer:
+                answers.append(int(answer))
+        
+        if len(answers) == len(questions):
+            total_score = sum(answers)
+            third = len(questions) // 3
+            depression_score = sum(answers[:third])
+            anxiety_score = sum(answers[third:2*third])
+            stress_score = sum(answers[2*third:])
+            
+            if total_score < len(questions) * 0.3:
+                severity = 'Minimal'
+            elif total_score < len(questions) * 0.6:
+                severity = 'Mild'
+            elif total_score < len(questions) * 0.9:
+                severity = 'Moderate'
+            else:
+                severity = 'Severe'
+            
+            recommendations = get_recommendations(severity)
+            
+            assessment = Assessment.objects.create(
+                user=request.user,
+                total_score=total_score,
+                depression_score=depression_score,
+                anxiety_score=anxiety_score,
+                stress_score=stress_score,
+                severity=severity,
+                recommendations=recommendations
+            )
+            
+            profile = UserProfile.objects.get(user=request.user)
+            profile.points += 10
+            profile.update_level()
+            
+            messages.success(request, 'Assessment completed! +10 points earned.')
+            return redirect('assessment_result', assessment_id=assessment.id)
+    
+    return render(request, 'core/assessment.html', {'questions': questions})
+
+@login_required
+def assessment_result(request, assessment_id):
+    assessment = get_object_or_404(Assessment, id=assessment_id, user=request.user)
+    return render(request, 'core/assessment_result.html', {'assessment': assessment})
+
+@login_required
+def rewards_view(request):
+    profile = UserProfile.objects.get(user=request.user)
+    badges = Badge.objects.filter(user=request.user)
+    
+    available_badges = []
+    badge_info = {
+        'streak_3': {'name': '3-Day Streak', 'icon': '??', 'points': 30, 'required': 3},
+        'streak_7': {'name': '7-Day Streak', 'icon': '????', 'points': 70, 'required': 7},
+        'streak_14': {'name': '14-Day Streak', 'icon': '??????', 'points': 140, 'required': 14},
+        'streak_30': {'name': '30-Day Streak', 'icon': '????????', 'points': 300, 'required': 30},
+    }
+    
+    earned_badges = {b.badge_type: b for b in badges}
+    
+    for badge_type, info in badge_info.items():
+        if badge_type in earned_badges:
+            info['earned'] = True
+            info['claimed'] = earned_badges[badge_type].claimed
+            info['badge_obj'] = earned_badges[badge_type]
+        else:
+            info['earned'] = profile.current_streak >= info['required']
+            info['claimed'] = False
+            info['badge_obj'] = None
+        available_badges.append(info)
+    
+    if request.method == 'POST':
+        badge_id = request.POST.get('badge_id')
+        if not badge_id:
+            messages.error(request, 'Invalid badge ID')
+            return redirect('rewards')
+        badge = get_object_or_404(Badge, id=badge_id, user=request.user)
+        if not badge.claimed:
+            badge.claimed = True
+            badge.save()
+            profile.points += badge.points_awarded
+            profile.update_level()
+            messages.success(request, f'Badge claimed! +{badge.points_awarded} points earned.')
+            return redirect('rewards')
+    
+    return render(request, 'core/rewards.html', {'profile': profile, 'available_badges': available_badges})
+
+@login_required
+def consultation_request_view(request):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'user':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    # Get doctors from user's institute
+    doctors = Doctor.objects.filter(institute=profile.institute, status='approved')
+    
+    if request.method == 'POST':
+        form = ConsultationRequestForm(request.POST)
+        if form.is_valid():
+            consultation = form.save(commit=False)
+            consultation.patient = request.user
+            consultation.save()
+            messages.success(request, 'Consultation request submitted! A doctor will respond soon.')
+            return redirect('dashboard')
+    else:
+        form = ConsultationRequestForm()
+    
+    my_consultations = Consultation.objects.filter(patient=request.user).order_by('-requested_date')
+    
+    return render(request, 'core/consultation_request.html', {
+        'form': form,
+        'doctors': doctors,
+        'my_consultations': my_consultations
+    })
+
+@login_required
+def chat_view(request, consultation_id):
+    consultation = get_object_or_404(Consultation, id=consultation_id)
+    
+    if request.user != consultation.patient and request.user != consultation.doctor:
+        messages.error(request, 'Access denied.')
+        return redirect('dashboard')
+    
+    if consultation.status != 'accepted':
+        messages.warning(request, 'Consultation not accepted yet.')
+        return redirect('dashboard')
+    
+    messages_list = ChatMessage.objects.filter(consultation=consultation)
+    decrypted_messages = []
+    for msg in messages_list:
+        decrypted_messages.append({
+            'sender': msg.sender,
+            'message': msg.decrypt_message(),
+            'timestamp': msg.timestamp,
+            'is_mine': msg.sender == request.user,
+        })
+    
+    if request.method == 'POST':
+        message_text = request.POST.get('message')
+        if message_text:
+            chat_message = ChatMessage(consultation=consultation, sender=request.user)
+            chat_message.encrypt_message(message_text)
+            chat_message.save()
+            return redirect('chat', consultation_id=consultation_id)
+    
+    return render(request, 'core/chat.html', {
+        'consultation': consultation,
+        'messages': decrypted_messages,
+    })
+
+@login_required
+def sos_view(request):
+    return render(request, 'core/sos.html')
+
+@login_required
+def activities_view(request):
+    profile = UserProfile.objects.get(user=request.user)
+    recommendations = ActivityRecommendation.objects.filter(user=request.user).order_by('-recommended_date')
+    
+    if request.method == 'POST':
+        activity_id = request.POST.get('activity_id')
+        activity = get_object_or_404(ActivityRecommendation, id=activity_id, user=request.user)
+        if not activity.completed:
+            activity.completed = True
+            activity.save()
+            profile.points += 10
+            profile.update_level()
+            messages.success(request, 'Activity completed! +10 points earned.')
+            return redirect('activities')
+    
+    return render(request, 'core/activities.html', {'recommendations': recommendations, 'profile': profile})
+
+# ============= INSTITUTE DASHBOARD =============
+
+@login_required
+def institute_dashboard(request):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'institute':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    institute = Institute.objects.get(manager=request.user)
+    
+    # Pending user approvals
+    pending_approvals = UserApproval.objects.filter(institute=institute, status__in=['pending', 'suspicious']).order_by('-requested_date')
+    
+    # Approved users
+    approved_users = UserProfile.objects.filter(institute=institute, is_approved=True)
+    
+    # Leaderboard
+    leaderboard = InstituteLeaderboard.objects.filter(institute=institute).order_by('-total_points')[:10]
+    
+    # Institute doctors
+    doctors = Doctor.objects.filter(institute=institute, status='approved')
+    
+    # Statistics
+    total_users = UserProfile.objects.filter(institute=institute, is_approved=True).count()
+    total_doctors = doctors.count()
+    total_consultations = Consultation.objects.filter(patient__userprofile__institute=institute).count()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        approval_id = request.POST.get('approval_id')
+        approval = get_object_or_404(UserApproval, id=approval_id, institute=institute)
+        
+        if action == 'approve':
+            approval.status = 'approved'
+            approval.approved_date = timezone.now()
+            approval.approved_by = request.user
+            approval.save()
+            
+            user_profile = UserProfile.objects.get(user=approval.user)
+            user_profile.is_approved = True
+            user_profile.save()
+            
+            # Create leaderboard entry
+            InstituteLeaderboard.objects.create(
+                institute=institute,
+                user=approval.user,
+                total_points=user_profile.points
+            )
+            
+            messages.success(request, f'User {approval.user.username} approved!')
+        elif action == 'reject':
+            approval.status = 'rejected'
+            approval.save()
+            messages.info(request, f'User {approval.user.username} rejected.')
+        
+        return redirect('institute_dashboard')
+    
+    context = {
+        'institute': institute,
+        'pending_approvals': pending_approvals,
+        'approved_users': approved_users,
+        'leaderboard': leaderboard,
+        'doctors': doctors,
+        'total_users': total_users,
+        'total_doctors': total_doctors,
+        'total_consultations': total_consultations,
+    }
+    return render(request, 'core/institute_dashboard.html', context)
+
+@login_required
+def institute_chat_user(request, user_id):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'institute':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    institute = Institute.objects.get(manager=request.user)
+    student = get_object_or_404(User, id=user_id)
+    student_profile = UserProfile.objects.get(user=student)
+    
+    if student_profile.institute != institute:
+        messages.error(request, 'Access denied.')
+        return redirect('institute_dashboard')
+    
+    # Create or get consultation for institute-user chat
+    consultation, created = Consultation.objects.get_or_create(
+        patient=student,
+        doctor=request.user,
+        defaults={'issue': 'Institute Manager Chat', 'status': 'accepted'}
+    )
+    
+    messages_list = ChatMessage.objects.filter(consultation=consultation)
+    decrypted_messages = []
+    for msg in messages_list:
+        decrypted_messages.append({
+            'sender': msg.sender,
+            'message': msg.decrypt_message(),
+            'timestamp': msg.timestamp,
+            'is_mine': msg.sender == request.user,
+        })
+    
+    if request.method == 'POST':
+        message_text = request.POST.get('message')
+        if message_text:
+            chat_message = ChatMessage(consultation=consultation, sender=request.user)
+            chat_message.encrypt_message(message_text)
+            chat_message.save()
+            return redirect('institute_chat_user', user_id=user_id)
+    
+    return render(request, 'core/institute_chat.html', {
+        'student': student,
+        'messages': decrypted_messages,
+    })
+
+# ============= DOCTOR DASHBOARD =============
+
+@login_required
+def doctor_apply_view(request):
+    existing_doctor = Doctor.objects.filter(user=request.user).first()
+    if existing_doctor:
+        return render(request, 'core/doctor_apply.html', {'existing_application': existing_doctor})
+    
+    if request.method == 'POST':
+        form = DoctorApplicationForm(request.POST, request.FILES)
+        if form.is_valid():
+            institute_code = form.cleaned_data.get('institute_code')
+            try:
+                institute = Institute.objects.get(registration_number=institute_code, status='approved')
+            except Institute.DoesNotExist:
+                messages.error(request, 'Invalid institute code or institute not approved.')
+                return render(request, 'core/doctor_apply.html', {'form': form})
+            
+            doctor = form.save(commit=False)
+            doctor.user = request.user
+            doctor.institute = institute
+            doctor.save()
+            
+            profile = UserProfile.objects.get(user=request.user)
+            profile.role = 'doctor'
+            profile.save()
+            
+            messages.success(request, 'Application submitted! Wait for moderator approval.')
+            return redirect('home')
+    else:
+        form = DoctorApplicationForm()
+    
+    return render(request, 'core/doctor_apply.html', {'form': form})
+
+@login_required
+def doctor_dashboard(request):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'doctor':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    try:
+        doctor = Doctor.objects.get(user=request.user)
+        if doctor.status != 'approved':
+            messages.warning(request, 'Your application is pending approval.')
+            return redirect('home')
+    except Doctor.DoesNotExist:
+        messages.error(request, 'You are not registered as a doctor.')
+        return redirect('home')
+    
+    # Get consultations from users in same institute
+    pending_consultations = Consultation.objects.filter(
+        patient__userprofile__institute=doctor.institute,
+        status='pending'
+    ).order_by('-requested_date')
+    
+    active_consultations = Consultation.objects.filter(
+        doctor=request.user,
+        status='accepted'
+    ).order_by('-accepted_date')
+    
+    completed_consultations = Consultation.objects.filter(
+        doctor=request.user,
+        status='completed'
+    ).order_by('-completed_date')[:10]
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        consultation_id = request.POST.get('consultation_id')
+        consultation = get_object_or_404(Consultation, id=consultation_id)
+        
+        if action == 'accept':
+            consultation.status = 'accepted'
+            consultation.doctor = request.user
+            consultation.accepted_date = timezone.now()
+            consultation.save()
+            messages.success(request, 'Consultation accepted!')
+        elif action == 'decline':
+            consultation.status = 'declined'
+            consultation.save()
+            messages.info(request, 'Consultation declined.')
+        elif action == 'complete':
+            consultation.status = 'completed'
+            consultation.completed_date = timezone.now()
+            consultation.save()
+            messages.success(request, 'Consultation marked as completed.')
+        
+        return redirect('doctor_dashboard')
+    
+    context = {
+        'doctor': doctor,
+        'pending_consultations': pending_consultations,
+        'active_consultations': active_consultations,
+        'completed_consultations': completed_consultations,
+    }
+    return render(request, 'core/doctor_dashboard.html', context)
+
+# ============= MODERATOR DASHBOARD =============
+
+@login_required
+def moderator_dashboard(request):
+    profile = UserProfile.objects.get(user=request.user)
+    if profile.role != 'moderator':
+        messages.error(request, 'Access denied.')
+        return redirect('home')
+    
+    # Pending institutes
+    pending_institutes = Institute.objects.filter(status='pending')
+    approved_institutes = Institute.objects.filter(status='approved')
+    
+    # Pending doctors
+    pending_doctors = Doctor.objects.filter(status='pending')
+    approved_doctors = Doctor.objects.filter(status='approved')
+    
+    # Removal requests
+    removal_requests = RemovalRequest.objects.filter(status='pending')
+    
+    # Statistics
+    total_users = UserProfile.objects.filter(role='user', is_approved=True).count()
+    total_institutes = Institute.objects.filter(status='approved').count()
+    total_doctors = Doctor.objects.filter(status='approved').count()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        entity_type = request.POST.get('entity_type')
+        entity_id = request.POST.get('entity_id')
+        
+        if entity_type == 'institute':
+            institute = get_object_or_404(Institute, id=entity_id)
+            if action == 'approve':
+                institute.status = 'approved'
+                institute.approved_date = timezone.now()
+                institute.save()
+                messages.success(request, f'{institute.name} approved!')
+            elif action == 'reject':
+                institute.status = 'rejected'
+                institute.save()
+                messages.info(request, f'{institute.name} rejected.')
+        
+        elif entity_type == 'doctor':
+            doctor = get_object_or_404(Doctor, id=entity_id)
+            if action == 'approve':
+                doctor.status = 'approved'
+                doctor.approved_date = timezone.now()
+                doctor.save()
+                messages.success(request, f'Dr. {doctor.user.get_full_name()} approved!')
+            elif action == 'reject':
+                doctor.status = 'rejected'
+                doctor.save()
+                messages.info(request, f'Dr. {doctor.user.get_full_name()} rejected.')
+        
+        elif entity_type == 'removal':
+            removal_request = get_object_or_404(RemovalRequest, id=entity_id)
+            if action == 'approve':
+                # Process removal
+                if removal_request.entity_type == 'doctor':
+                    doctor = Doctor.objects.get(id=removal_request.entity_id)
+                    doctor.user.delete()
+                elif removal_request.entity_type == 'institute':
+                    institute = Institute.objects.get(id=removal_request.entity_id)
+                    institute.is_active = False
+                    institute.save()
+                elif removal_request.entity_type == 'user':
+                    user = User.objects.get(id=removal_request.entity_id)
+                    user.delete()
+                
+                removal_request.status = 'approved'
+                removal_request.processed_date = timezone.now()
+                removal_request.processed_by = request.user
+                removal_request.save()
+                messages.success(request, 'Removal request approved.')
+            elif action == 'reject':
+                removal_request.status = 'rejected'
+                removal_request.save()
+                messages.info(request, 'Removal request rejected.')
+        
+        return redirect('moderator_dashboard')
+    
+    context = {
+        'pending_institutes': pending_institutes,
+        'approved_institutes': approved_institutes,
+        'pending_doctors': pending_doctors,
+        'approved_doctors': approved_doctors,
+        'removal_requests': removal_requests,
+        'total_users': total_users,
+        'total_institutes': total_institutes,
+        'total_doctors': total_doctors,
+    }
+    return render(request, 'core/moderator_dashboard.html', context)
+
+@login_required
+def removal_request_view(request):
+    if request.method == 'POST':
+        form = RemovalRequestForm(request.POST)
+        if form.is_valid():
+            removal_request = form.save(commit=False)
+            removal_request.requested_by = request.user
+            removal_request.save()
+            messages.success(request, 'Removal request submitted to moderator.')
+            return redirect('institute_dashboard' if request.user.userprofile.role == 'institute' else 'moderator_dashboard')
+    else:
+        form = RemovalRequestForm()
+    
+    return render(request, 'core/removal_request.html', {'form': form})
+
+# ============= HELPER FUNCTIONS =============
+
+def get_assessment_questions():
+    categories = {
+        'Depression': [
+            'Little interest or pleasure in doing things',
+            'Feeling down, depressed, or hopeless',
+            'Trouble falling or staying asleep',
+            'Feeling tired or having little energy',
+            'Poor appetite or overeating',
+        ],
+        'Anxiety': [
+            'Feeling nervous or on edge',
+            'Not being able to stop worrying',
+            'Worrying too much about different things',
+            'Trouble relaxing',
+            'Being so restless',
+        ],
+        'Stress': [
+            'Difficulty unwinding',
+            'Nervous energy',
+            'Easily upset',
+            'Irritable',
+            'Impatient',
+        ],
+    }
+    
+    all_questions = []
+    for category, questions in categories.items():
+        for q in questions:
+            all_questions.append({'category': category, 'question': q})
+    
+    return all_questions
+
+def get_recommendations(severity):
+    recommendations = {
+        'Minimal': 'Your mental health appears to be good. Continue with daily check-ins and self-care practices.',
+        'Mild': 'Consider talking to a counselor. Practice relaxation techniques and maintain a healthy routine.',
+        'Moderate': 'We recommend consulting with a mental health professional. Consider therapy or counseling.',
+        'Severe': 'Please seek immediate professional help. Contact a psychiatrist or crisis hotline.',
+    }
+    return recommendations.get(severity, '')
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .gemini_chatbot import query_gemini_api
+import json
+
+@csrf_exempt
+@login_required
+def chatbot_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message')
+        if not user_message:
+            return JsonResponse({'error': 'No message provided'}, status=400)
+        bot_response = query_gemini_api(user_message)
+        return JsonResponse({'response': bot_response})
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+@login_required
+def chatbot_ui(request):
+    return render(request, 'core/chatbot.html')
+
+
+from .mental_health_analyzer import analyze_mental_health_text
+from .models import MentalHealthAlert, InstantRecommendation
+
+@csrf_exempt
+@login_required
+def chatbot_api(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        user_message = data.get('message')
+        if not user_message:
+            return JsonResponse({'error': 'No message provided'}, status=400)
+        
+        # Use updated query function that includes monitoring
+        from .gemini_chatbot import query_gemini_api
+        bot_response, severity = query_gemini_api(user_message, request.user)
+        
+        # Get pending recommendations
+        pending_recs = InstantRecommendation.objects.filter(
+            user=request.user,
+            completed=False
+        ).order_by('-created_at')[:2]
+        
+        recommendations_data = [{
+            'id': rec.id,
+            'title': rec.title,
+            'youtube_url': rec.youtube_url,
+            'points': rec.bonus_points,
+            'type': rec.activity_type
+        } for rec in pending_recs]
+        
+        return JsonResponse({
+            'response': bot_response,
+            'severity': severity,
+            'recommendations': recommendations_data
+        })
+    return JsonResponse({'error': 'Invalid method'}, status=405)
+
+@login_required
+def complete_recommendation(request, rec_id):
+    recommendation = get_object_or_404(InstantRecommendation, id=rec_id, user=request.user)
+    if not recommendation.completed:
+        recommendation.completed = True
+        recommendation.save()
+        
+        # Award bonus points
+        profile = UserProfile.objects.get(user=request.user)
+        profile.points += recommendation.bonus_points
+        profile.update_level()
+        
+        messages.success(request, f'Great job! +{recommendation.bonus_points} bonus points earned!')
+    return redirect('chatbot_ui')
+
+
+
+# Separate registration for different roles
+def register_user_student(request):
+    '''User/Student registration with institute code'''
+    if request.method == 'POST':
+        # Extract data
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        first_name = request.POST.get('first_name')
+        last_name = request.POST.get('last_name')
+        age = int(request.POST.get('age'))
+        weight = float(request.POST.get('weight', 0))
+        height = float(request.POST.get('height', 0))
+        phone = request.POST.get('phone')
+        password1 = request.POST.get('password1')
+        password2 = request.POST.get('password2')
+        institute_code = request.POST.get('institute_code')
+        
+        # Validate passwords
+        if password1 != password2:
+            messages.error(request, 'Passwords do not match')
+            return render(request, 'core/register_user.html')
+        
+        # Check institute exists
+        try:
+            institute = Institute.objects.get(registration_number=institute_code, status='approved')
+        except Institute.DoesNotExist:
+            messages.error(request, 'Invalid institute code')
+            return render(request, 'core/register_user.html')
+        
+        # Create user
+        user = User.objects.create_user(username=username, email=email, password=password1, first_name=first_name, last_name=last_name)
+        
+        # ML Bot Detection
+        from .ml_utils import detect_bot_registration, generate_activity_recommendations
+        is_bot, score, reasons = detect_bot_registration(username, email, first_name, last_name, age, phone)
+        
+        # Create profile
+        profile = UserProfile.objects.create(
+            user=user,
+            role='user',
+            age=age,
+            weight=weight,
+            height=height,
+            phone=phone,
+            institute=institute,
+            is_approved=False if is_bot else True,
+            is_bot_suspected=is_bot
+        )
+        
+        # Create approval request
+        UserApproval.objects.create(
+            user=user,
+            institute=institute,
+            status='suspicious' if is_bot else 'approved',
+            ml_score=score,
+            is_bot_suspected=is_bot,
+            notes=f'ML reasons: {reasons}' if is_bot else 'Auto-approved by ML'
+        )
+        
+        # Generate activities
+        activities = generate_activity_recommendations(age, weight or 65, height or 170)
+        for activity in activities[:3]:
+            ActivityRecommendation.objects.create(
+                user=user,
+                activity_type=activity['type'],
+                title=activity['title'],
+                description=activity['description'],
+                duration=activity['duration'],
+                difficulty=activity['difficulty']
+            )
+        
+        messages.success(request, 'Registration submitted! Wait for approval.' if is_bot else 'Registration successful! You can login now.')
+        return redirect('login')
+    
+    return render(request, 'core/register_user.html')
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.db.models import Count, Avg, Q, Sum
+from django.utils import timezone
+from django.contrib.auth.models import User
+from datetime import datetime, timedelta
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import *
+from .forms import *
+from .ml_utils import detect_bot_registration, generate_activity_recommendations
+from .mental_health_analyzer import analyze_mental_health_text
+import random
+import json
+import os
+
+# User/Student Registration with ML Bot Detection
+def register_user_student(request):
+    '''Register as student with ML bot detection'''
+    if request.method == 'POST':
+        try:
+            username = request.POST.get('username')
+            email = request.POST.get('email')
+            first_name = request.POST.get('first_name')
+            last_name = request.POST.get('last_name')
+            age = int(request.POST.get('age', 0))
+            weight = float(request.POST.get('weight', 0)) if request.POST.get('weight') else 0
+            height = float(request.POST.get('height', 0)) if request.POST.get('height') else 0
+            phone = request.POST.get('phone', '')
+            password1 = request.POST.get('password1')
+            password2 = request.POST.get('password2')
+            institute_code = request.POST.get('institute_code')
+            
+            # Validate passwords match
+            if password1 != password2:
+                messages.error(request, '❌ Passwords do not match!')
+                return render(request, 'core/register_user.html')
+            
+            # Check institute exists and approved
+            try:
+                institute = Institute.objects.get(registration_number=institute_code, status='approved')
+            except Institute.DoesNotExist:
+                messages.error(request, '❌ Invalid institute code or institute not approved yet!')
+                return render(request, 'core/register_user.html')
+            
+            # Check if username already exists
+            if User.objects.filter(username=username).exists():
+                messages.error(request, '❌ Username already taken!')
+                return render(request, 'core/register_user.html')
+            
+            # 🤖 ML BOT DETECTION
+            is_bot, ml_score, reasons = detect_bot_registration(username, email, first_name, last_name, age, phone)
+            
+            # Create user
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password1,
+                first_name=first_name,
+                last_name=last_name
+            )
+            
+            # Create user profile
+            profile = UserProfile.objects.create(
+                user=user,
+                role='user',
+                age=age,
+                weight=weight,
+                height=height,
+                phone=phone,
+                institute=institute,
+                is_approved=not is_bot,  # Auto-approve if not bot
+                is_bot_suspected=is_bot
+            )
+            profile.update_level()
+            
+            # Create approval record
+            UserApproval.objects.create(
+                user=user,
+                institute=institute,
+                status='approved' if not is_bot else 'suspicious',
+                ml_score=ml_score,
+                is_bot_suspected=is_bot,
+                notes=f'ML Alert: {", ".join(reasons)}' if reasons else 'Auto-approved (legitimate user)'
+            )
+            
+            # 👟 Generate personalized activity recommendations
+            activities = generate_activity_recommendations(age, weight or 65, height or 170)
+            for activity in activities:
+                ActivityRecommendation.objects.create(
+                    user=user,
+                    activity_type=activity['type'],
+                    title=activity['title'],
+                    description=activity['description'],
+                    duration=activity['duration'],
+                    difficulty=activity['difficulty']
+                )
+            
+            if is_bot:
+                messages.warning(request, f'⚠️ Your registration is under review by institute manager (ML Score: {ml_score})')
+                return redirect('login')
+            else:
+                messages.success(request, '✅ Registration successful! You can login now.')
+                return redirect('login')
+                
+        except Exception as e:
+            messages.error(request, f'❌ Error: {str(e)}')
+            return render(request, 'core/register_user.html')
+    
+    return render(request, 'core/register_user.html')
+
+# Institute Registration with OCR ID Card Scanning
+def institute_register_view(request):
+    '''Register institute with OCR document verification'''
+    if request.method == 'POST':
+        try:
+            from .id_scanner import verify_id_document
+            
+            name = request.POST.get('name')
+            registration_number = request.POST.get('registration_number')
+            address = request.POST.get('address')
+            contact_email = request.POST.get('contact_email')
+            contact_phone = request.POST.get('contact_phone')
+            first_name = request.POST.get('first_name')
+            last_name = request.POST.get('last_name')
+            username = request.POST.get('username')
+            email = request.POST.get('email')
+            password = request.POST.get('password')
+            password_confirm = request.POST.get('password_confirm')
+            
+            # Validate passwords
+            if password != password_confirm:
+                messages.error(request, '❌ Passwords do not match!')
+                return render(request, 'core/institute_register.html')
+            
+            # Check if username exists
+            if User.objects.filter(username=username).exists():
+                messages.error(request, '❌ Username already taken!')
+                return render(request, 'core/institute_register.html')
+            
+            # 📄 OCR SCAN - Manager ID Document
+            id_file = request.FILES.get('id_document')
+            license_file = request.FILES.get('license_document')
+            
+            if not id_file or not license_file:
+                messages.error(request, '❌ Please upload all required documents!')
+                return render(request, 'core/institute_register.html')
+            
+            # Process ID document with OCR
+            id_result = verify_id_document(id_file, 'temp_id.jpg')
+            if not id_result['success']:
+                messages.error(request, f"❌ Error scanning ID: {id_result['error']}")
+                return render(request, 'core/institute_register.html')
+            
+            # Create manager user
+            manager_user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            
+            # Create user profile for manager
+            UserProfile.objects.create(
+                user=manager_user,
+                role='institute'
+            )
+            
+            # Create institute
+            institute = Institute.objects.create(
+                name=name,
+                manager=manager_user,
+                registration_number=registration_number,
+                address=address,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                status='pending'  # Awaiting moderator approval
+            )
+            
+            # Save documents
+            if id_file:
+                institute.id_document = id_file
+            if license_file:
+                institute.license_document = license_file
+            institute.save()
+            
+            messages.success(request, '✅ Institute registered! Awaiting moderator approval.')
+            return redirect('login')
+            
+        except Exception as e:
+            messages.error(request, f'❌ Error: {str(e)}')
+            return render(request, 'core/institute_register.html')
+    
+    return render(request, 'core/institute_register.html')
+
+# Doctor Registration with OCR and ML validation
+def doctor_apply_view(request):
+    '''Doctor application with document verification'''
+    if request.method == 'POST':
+        try:
+            from .id_scanner import verify_id_document
+            
+            license_number = request.POST.get('license_number')
+            specialization = request.POST.get('specialization')
+            experience = int(request.POST.get('experience', 0))
+            qualification = request.POST.get('qualification')
+            institute_code = request.POST.get('institute_code')
+            
+            id_file = request.FILES.get('id_document')
+            license_file = request.FILES.get('license_document')
+            
+            if not id_file or not license_file:
+                messages.error(request, '❌ Please upload all required documents!')
+                return render(request, 'core/register_doctor.html')
+            
+            # Check institute exists
+            try:
+                institute = Institute.objects.get(registration_number=institute_code, status='approved')
+            except Institute.DoesNotExist:
+                messages.error(request, '❌ Invalid institute code!')
+                return render(request, 'core/register_doctor.html')
+            
+            # 📄 OCR SCAN - Medical License
+            license_result = verify_id_document(license_file, 'temp_license.jpg')
+            if not license_result['success']:
+                messages.warning(request, '⚠️ Could not read license image clearly, but saved for manual review')
+            
+            # Get current user or create
+            user = request.user if request.user.is_authenticated else None
+            
+            if not user:
+                messages.error(request, '❌ Please login first or register!')
+                return render(request, 'core/register_doctor.html')
+            
+            # Create doctor profile
+            doctor = Doctor.objects.create(
+                user=user,
+                institute=institute,
+                license_number=license_number,
+                specialization=specialization,
+                experience=experience,
+                qualification=qualification,
+                status='pending'  # Awaiting moderator approval
+            )
+            
+            # Save documents
+            if id_file:
+                doctor.id_document = id_file
+            if license_file:
+                doctor.license_document = license_file
+            doctor.save()
+            
+            messages.success(request, '✅ Doctor application submitted! Awaiting moderator approval.')
+            return redirect('dashboard')
+            
+        except Exception as e:
+            messages.error(request, f'❌ Error: {str(e)}')
+            return render(request, 'core/register_doctor.html')
+    
+    return render(request, 'core/register_doctor.html')
+
+@login_required
+def pending_approval_view(request):
+    '''Show pending approval page'''
+    return render(request, 'core/pending_approval.html')
+
+
+
+    
+    return render(request, 'core/login.html')
+
+def logout_view(request):
+    '''User logout'''
+    logout(request)
+    messages.success(request, '✅ You have been logged out!')
+    return redirect('home')
+
+def home(request):
+    '''Home page'''
+    return render(request, 'core/home.html')
+
+def pending_approval_view(request):
+    '''Pending approval page'''
+    return render(request, 'core/pending_approval.html')
+
+
+
+
+from django.contrib.auth import views as auth_views
+
+class CustomPasswordResetView(auth_views.PasswordResetView):
+    template_name = 'core/password_reset.html'
+    email_template_name = 'core/password_reset_email.html'
+    subject_template_name = 'core/password_reset_subject.txt'
+    success_url = '/password-reset/done/'
+
+class CustomPasswordResetDoneView(auth_views.PasswordResetDoneView):
+    template_name = 'core/password_reset_done.html'
+
+class CustomPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+    template_name = 'core/password_reset_confirm.html'
+    success_url = '/password-reset/complete/'
+
+class CustomPasswordResetCompleteView(auth_views.PasswordResetCompleteView):
+    template_name = 'core/password_reset_complete.html'
+
+# Dashboard view
+@login_required
+def dashboard(request):
+    profile = UserProfile.objects.get(user=request.user)
+    recommendations = ActivityRecommendation.objects.filter(user=request.user, completed=False)[:5]
+    consultations = Consultation.objects.filter(user=request.user)[:5]
+    badges = Badge.objects.filter(user=request.user)
+    gita_verse = {'text': 'You have the right to work, but never to the fruit of work.', 'chapter': 2, 'verse': 47}
+    
+    return render(request, 'core/dashboard.html', {
+        'profile': profile,
+        'recommendations': recommendations,
+        'consultations': consultations,
+        'badges': badges,
+        'gita_verse': gita_verse
+    })
+
+# Chatbot UI
+@login_required
+def chatbot_ui(request):
+    return render(request, 'core/chatbot_ui.html')
+
+# Chatbot API
+@csrf_exempt
+def chatbot_api(request):
+    if request.method == 'POST':
+        import json
+        from .gemini_chatbot import chat_with_gemini
+        from .mental_health_analyzer import analyze_mental_health_text, get_instant_recommendations
+        
+        data = json.loads(request.body)
+        message = data.get('message', '')
+        
+        # Analyze for mental health keywords
+        severity, keywords = analyze_mental_health_text(message)
+        
+        # Get AI response
+        response = chat_with_gemini(message)
+        
+        # Get crisis recommendations if needed
+        recommendations = []
+        if severity and severity != 'low':
+            recommendations = get_instant_recommendations(severity)
+            # Award bonus points
+            if request.user.is_authenticated:
+                profile = UserProfile.objects.get(user=request.user)
+                profile.add_points(20)
+        
+        return JsonResponse({
+            'response': response,
+            'severity': severity,
+            'recommendations': recommendations
+        })
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+# Check-in
+@login_required
+def checkin_view(request):
+    if request.method == 'POST':
+        CheckIn.objects.create(
+            user=request.user,
+            mood=request.POST.get('mood'),
+            energy=request.POST.get('energy'),
+            sleep_quality=request.POST.get('sleep_quality'),
+            notes=request.POST.get('notes', '')
+        )
+        profile = UserProfile.objects.get(user=request.user)
+        profile.add_points(10)
+        profile.update_streak()
+        messages.success(request, '✅ Check-in complete! +10 points')
+        return redirect('dashboard')
+    return render(request, 'core/checkin.html')
+
+# Activities
+@login_required
+def activities_view(request):
+    profile = UserProfile.objects.get(user=request.user)
+    activities = ActivityRecommendation.objects.filter(user=request.user, completed=False)
+    badges = Badge.objects.filter(user=request.user)
+    completed_today = ActivityRecommendation.objects.filter(user=request.user, completed=True, completed_at__date=timezone.now().date()).count()
+    
+    return render(request, 'core/activities.html', {
+        'activities': activities,
+        'badges': badges,
+        'completed_today': completed_today,
+        'total_points': profile.points,
+        'streak': profile.check_in_streak
+    })
+
+# Complete activity
+@login_required
+def complete_recommendation(request, rec_id):
+    rec = ActivityRecommendation.objects.get(id=rec_id, user=request.user)
+    rec.completed = True
+    rec.completed_at = timezone.now()
+    rec.save()
+    
+    profile = UserProfile.objects.get(user=request.user)
+    profile.add_points(rec.points)
+    messages.success(request, f'✅ Activity completed! +{rec.points} points')
+    return redirect('activities')
+
+# Consultation request
+@login_required
+def consultation_request_view(request):
+    if request.method == 'POST':
+        doctor_id = request.POST.get('doctor')
+        doctor = Doctor.objects.get(id=doctor_id)
+        Consultation.objects.create(
+            user=request.user,
+            doctor=doctor,
+            issue=request.POST.get('issue'),
+            urgency=request.POST.get('urgency'),
+            status='pending'
+        )
+        messages.success(request, '✅ Consultation request sent!')
+        return redirect('dashboard')
+    
+    doctors = Doctor.objects.filter(status='approved')
+    return render(request, 'core/consultation_request.html', {'doctors': doctors})
+
+# Chat
+@login_required
+def chat_view(request, consultation_id):
+    consultation = get_object_or_404(Consultation, id=consultation_id)
+    
+    if request.method == 'POST':
+        Message.objects.create(
+            consultation=consultation,
+            sender=request.user,
+            content=request.POST.get('message')
+        )
+        return redirect('chat', consultation_id=consultation_id)
+    
+    messages_list = Message.objects.filter(consultation=consultation).order_by('timestamp')
+    return render(request, 'core/chat.html', {'consultation': consultation, 'messages': messages_list})
+
+# Doctor dashboard
+@login_required
+def doctor_dashboard(request):
+    doctor = Doctor.objects.get(user=request.user)
+    pending_count = Consultation.objects.filter(doctor=doctor, status='pending').count()
+    active_count = Consultation.objects.filter(doctor=doctor, status='active').count()
+    crisis_count = MentalHealthAlert.objects.filter(doctor=doctor, resolved=False).count()
+    crisis_alerts = MentalHealthAlert.objects.filter(doctor=doctor, resolved=False)[:10]
+    active_consultations = Consultation.objects.filter(doctor=doctor, status='active')
+    
+    return render(request, 'core/doctor_dashboard.html', {
+        'pending_count': pending_count,
+        'active_count': active_count,
+        'crisis_count': crisis_count,
+        'crisis_alerts': crisis_alerts,
+        'active_consultations': active_consultations
+    })
+
+# Institute dashboard
+@login_required
+def institute_dashboard(request):
+    institute = Institute.objects.get(manager=request.user)
+    pending_approvals = UserApproval.objects.filter(institute=institute, status='suspicious')
+    total_students = UserProfile.objects.filter(institute=institute, role='user').count()
+    pending_students = pending_approvals.count()
+    total_doctors = Doctor.objects.filter(institute=institute, status='approved').count()
+    crisis_alerts = MentalHealthAlert.objects.filter(institute=institute, resolved=False).count()
+    leaderboard = UserProfile.objects.filter(institute=institute, role='user').order_by('-points')[:10]
+    
+    return render(request, 'core/institute_dashboard.html', {
+        'pending_approvals': pending_approvals,
+        'total_students': total_students,
+        'pending_students': pending_students,
+        'total_doctors': total_doctors,
+        'crisis_alerts': crisis_alerts,
+        'leaderboard': leaderboard
+    })
+
+def terms_policy_view(request):
+    '''Show privacy policy and terms'''
+    if request.method == 'POST':
+        agree_privacy = request.POST.get('agree_privacy')
+        agree_terms = request.POST.get('agree_terms')
+        agree_accuracy = request.POST.get('agree_accuracy')
+        
+        if agree_privacy and agree_terms and agree_accuracy:
+            request.session['terms_agreed'] = True
+            messages.success(request, '✅ Thank you for agreeing to our terms!')
+            return redirect('register')
+        else:
+            messages.error(request, '❌ Please agree to all terms to continue')
+    
+    return render(request, 'core/terms_policy.html')
+
+def home(request):
+    '''Home page'''
+    return render(request, 'core/home.html')
+
+from django.http import JsonResponse
+
+def api_test(request):
+    '''Test backend connectivity'''
+    try:
+        # Test database
+        total_users = User.objects.count()
+        total_students = UserProfile.objects.filter(role='user').count()
+        total_doctors = Doctor.objects.count()
+        total_institutes = Institute.objects.count()
+        
+        # Test email (will send test email)
+        from django.core.mail import send_mail
+        try:
+            send_mail(
+                'SoulCare API Test',
+                'Backend connectivity test',
+                'noreplaysoulcare@gmail.com',
+                ['test@soulcare.com'],
+                fail_silently=True
+            )
+            email_status = 'Connected ✅'
+        except:
+            email_status = 'Failed ❌'
+        
+        return JsonResponse({
+            'status': 'Backend Connected ✅',
+            'database': {
+                'total_users': total_users,
+                'total_students': total_students,
+                'total_doctors': total_doctors,
+                'total_institutes': total_institutes,
+            },
+            'email': email_status,
+            'timestamp': str(timezone.now())
+        })
+    except Exception as e:
+        return JsonResponse({'status': f'Error: {str(e)}'}, status=500)
+
+@login_required
+def approve_institute(request, institute_id):
+    '''Moderator approves institute'''
+    if not UserProfile.objects.filter(user=request.user, role='moderator').exists():
+        return redirect('login')
+    
+    institute = get_object_or_404(Institute, id=institute_id)
+    institute.status = 'approved'
+    institute.save()
+    
+    # Send email to manager
+    send_mail(
+        'Institute Approved - SoulCare',
+        f'Your institute {institute.name} has been approved by moderator!',
+        'noreplaysoulcare@gmail.com',
+        [institute.manager.email],
+        fail_silently=True
+    )
+    
+    messages.success(request, f'✅ {institute.name} approved!')
+    return redirect('moderator_dashboard')
+
+@login_required
+def reject_institute(request, institute_id):
+    '''Moderator rejects institute'''
+    if not UserProfile.objects.filter(user=request.user, role='moderator').exists():
+        return redirect('login')
+    
+    institute = get_object_or_404(Institute, id=institute_id)
+    institute.status = 'rejected'
+    institute.save()
+    
+    messages.warning(request, f'❌ {institute.name} rejected!')
+    return redirect('moderator_dashboard')
+
+@login_required
+def approve_doctor(request, doctor_id):
+    '''Moderator approves doctor'''
+    if not UserProfile.objects.filter(user=request.user, role='moderator').exists():
+        return redirect('login')
+    
+    doctor = get_object_or_404(Doctor, id=doctor_id)
+    doctor.status = 'approved'
+    doctor.save()
+    
+    send_mail(
+        'Doctor Application Approved - SoulCare',
+        f'Your doctor application has been approved!',
+        'noreplaysoulcare@gmail.com',
+        [doctor.user.email],
+        fail_silently=True
+    )
+    
+    messages.success(request, f'✅ Dr. {doctor.user.get_full_name()} approved!')
+    return redirect('moderator_dashboard')
+
+@login_required
+def reject_doctor(request, doctor_id):
+    '''Moderator rejects doctor'''
+    if not UserProfile.objects.filter(user=request.user, role='moderator').exists():
+        return redirect('login')
+    
+    doctor = get_object_or_404(Doctor, id=doctor_id)
+    doctor.status = 'rejected'
+    doctor.save()
+    
+    messages.warning(request, f'❌ Dr. {doctor.user.get_full_name()} rejected!')
+    return redirect('moderator_dashboard')
+
+

@@ -1,0 +1,62 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main'>
+    <div class='row'>
+        <div class='col-md-3'>
+            <h3>👋 Hello, {{ user.get_full_name }}</h3>
+            <div class='card p-3 mb-3'>
+                <h5>🏆 Your Stats</h5>
+                <p><b>Level:</b> {{ profile.level }}</p>
+                <p><b>Points:</b> {{ profile.points }}</p>
+                <p><b>Streak:</b> {{ profile.check_in_streak }} days 🔥</p>
+            </div>
+            <a href='{% url "checkin" %}' class='btn btn-primary w-100 mb-2'>✅ Daily Check-in</a>
+            <a href='{% url "chatbot_ui" %}' class='btn btn-success w-100 mb-2'>🤖 24/7 AI Support</a>
+            <a href='{% url "consultation_request" %}' class='btn btn-info w-100 mb-2'>👨‍⚕️ Talk to Doctor</a>
+            <a href='{% url "activities" %}' class='btn btn-warning w-100 mb-2'>👟 Activities</a>
+        </div>
+        
+        <div class='col-md-6'>
+            <h4>📊 Today's Activities</h4>
+            {% for rec in recommendations %}
+            <div class='card p-3 mb-2'>
+                <h6>{{ rec.title }}</h6>
+                <p><small>{{ rec.description }}</small></p>
+                <div class='d-flex justify-content-between'>
+                    <span class='badge bg-info'>{{ rec.duration }} min</span>
+                    <a href='{% url "complete_recommendation" rec.id %}' class='btn btn-sm btn-success'>Complete (+{{ rec.points }}pts)</a>
+                </div>
+            </div>
+            {% empty %}
+            <p class='text-muted'>No activities for today!</p>
+            {% endfor %}
+            
+            <h4 class='mt-4'>💬 Recent Consultations</h4>
+            {% for consultation in consultations %}
+            <div class='card p-3 mb-2'>
+                <p><b>Dr. {{ consultation.doctor.user.get_full_name }}</b> - {{ consultation.specialization }}</p>
+                <small>{{ consultation.created_at|date:"M d, Y" }}</small>
+                <a href='{% url "chat" consultation.id %}' class='btn btn-sm btn-primary'>Continue Chat</a>
+            </div>
+            {% empty %}
+            <p class='text-muted'>No consultations yet</p>
+            {% endfor %}
+        </div>
+        
+        <div class='col-md-3'>
+            <h5>🌟 Daily Inspiration</h5>
+            <div class='card p-3 mb-3 bg-light'>
+                <p class='fst-italic'>"{{ gita_verse.text }}"</p>
+                <small class='text-muted'>- Bhagavad Gita {{ gita_verse.chapter }}:{{ gita_verse.verse }}</small>
+            </div>
+            
+            <h5>🏅 Your Badges</h5>
+            {% for badge in badges %}
+            <span class='badge bg-warning mb-1'>{{ badge.name }} {{ badge.icon }}</span>
+            {% empty %}
+            <p class='text-muted'><small>Keep checking in to earn badges!</small></p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width: 600px;'>
+    <h2 class='text-center mb-4'>✅ Daily Check-in</h2>
+    <p class='text-center text-muted'>Share how you're feeling today</p>
+    
+    <form method='post'>
+        {% csrf_token %}
+        
+        <div class='mb-4'>
+            <label class='form-label fw-bold'>😊 How's your mood?</label>
+            <div class='btn-group w-100' role='group'>
+                <input type='radio' class='btn-check' name='mood' id='mood1' value='happy' required>
+                <label class='btn btn-outline-success' for='mood1'>😊 Happy</label>
+                
+                <input type='radio' class='btn-check' name='mood' id='mood2' value='neutral'>
+                <label class='btn btn-outline-secondary' for='mood2'>😐 Neutral</label>
+                
+                <input type='radio' class='btn-check' name='mood' id='mood3' value='sad'>
+                <label class='btn btn-outline-warning' for='mood3'>😔 Sad</label>
+                
+                <input type='radio' class='btn-check' name='mood' id='mood4' value='anxious'>
+                <label class='btn btn-outline-danger' for='mood4'>😰 Anxious</label>
+            </div>
+        </div>
+        
+        <div class='mb-4'>
+            <label class='form-label fw-bold'>⚡ Energy level?</label>
+            <div class='btn-group w-100' role='group'>
+                <input type='radio' class='btn-check' name='energy' id='energy1' value='high' required>
+                <label class='btn btn-outline-success' for='energy1'>High</label>
+                
+                <input type='radio' class='btn-check' name='energy' id='energy2' value='medium'>
+                <label class='btn btn-outline-info' for='energy2'>Medium</label>
+                
+                <input type='radio' class='btn-check' name='energy' id='energy3' value='low'>
+                <label class='btn btn-outline-danger' for='energy3'>Low</label>
+            </div>
+        </div>
+        
+        <div class='mb-4'>
+            <label class='form-label fw-bold'>😴 Sleep quality last night?</label>
+            <div class='btn-group w-100' role='group'>
+                <input type='radio' class='btn-check' name='sleep_quality' id='sleep1' value='excellent' required>
+                <label class='btn btn-outline-success' for='sleep1'>Excellent</label>
+                
+                <input type='radio' class='btn-check' name='sleep_quality' id='sleep2' value='good'>
+                <label class='btn btn-outline-info' for='sleep2'>Good</label>
+                
+                <input type='radio' class='btn-check' name='sleep_quality' id='sleep3' value='poor'>
+                <label class='btn btn-outline-danger' for='sleep3'>Poor</label>
+            </div>
+        </div>
+        
+        <div class='mb-4'>
+            <label class='form-label fw-bold'>📝 Any thoughts? (Optional)</label>
+            <textarea name='notes' class='form-control' rows='3' placeholder='What's on your mind?'></textarea>
+        </div>
+        
+        <button type='submit' class='btn btn-primary btn-lg w-100'>Submit Check-in (+10 points)</button>
+    </form>
+</div>
+{% endblock %}

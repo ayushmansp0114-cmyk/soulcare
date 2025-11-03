@@ -1,0 +1,194 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width: 900px;'>
+    <h2>📋 Privacy Policy & Terms of Service</h2>
+    
+    <div class='alert alert-info'>
+        <p class='fw-bold'>⚠️ IMPORTANT: Please read carefully before using SoulCare</p>
+    </div>
+    
+    <div class='accordion' id='policyAccordion'>
+        
+        <!-- 1. Data Privacy -->
+        <div class='accordion-item'>
+            <h2 class='accordion-header'>
+                <button class='accordion-button' type='button' data-bs-toggle='collapse' data-bs-target='#privacy'>
+                    🔐 Privacy & Data Protection
+                </button>
+            </h2>
+            <div id='privacy' class='accordion-collapse collapse show' data-bs-parent='#policyAccordion'>
+                <div class='accordion-body'>
+                    <h5>Data We Collect:</h5>
+                    <ul>
+                        <li>Personal Information: Name, Email, Age, Contact details</li>
+                        <li>Health Information: Mental health symptoms, mood, sleep patterns</li>
+                        <li>Consultation Records: Chat history with doctors</li>
+                        <li>Activity Data: Check-ins, workout records, engagement metrics</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>How We Use Your Data:</h5>
+                    <ul>
+                        <li>✓ Provide personalized mental health recommendations</li>
+                        <li>✓ Connect you with qualified healthcare professionals</li>
+                        <li>✓ Improve app functionality and user experience</li>
+                        <li>✓ Monitor crisis situations for safety</li>
+                        <li>✓ Generate health insights and reports</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>Data Security:</h5>
+                    <ul>
+                        <li>✓ End-to-end encryption for doctor-patient chats</li>
+                        <li>✓ Password protection and secure authentication</li>
+                        <li>✓ SSL/TLS encryption for data transmission</li>
+                        <li>✓ Regular security audits</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>⚠️ CRITICAL - User Responsibility:</h5>
+                    <p class='text-danger fw-bold'>
+                        ⚠️ You are responsible for providing ACCURATE and TRUE information. 
+                        If you provide false or misleading health information, the AI recommendations 
+                        and doctor consultations may not be effective or safe for you.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 2. User Agreement -->
+        <div class='accordion-item'>
+            <h2 class='accordion-header'>
+                <button class='accordion-button collapsed' type='button' data-bs-toggle='collapse' data-bs-target='#terms'>
+                    📝 User Agreement & Terms
+                </button>
+            </h2>
+            <div id='terms' class='accordion-collapse collapse' data-bs-parent='#policyAccordion'>
+                <div class='accordion-body'>
+                    <h5>1. Eligibility:</h5>
+                    <p>You must be at least 18 years old or have parental consent to use SoulCare.</p>
+                    
+                    <h5 class='mt-3'>2. Accurate Information:</h5>
+                    <p class='text-danger'>
+                        <b>⚠️ YOU MUST PROVIDE ACCURATE AND TRUTHFUL INFORMATION</b>
+                    </p>
+                    <ul>
+                        <li>Age, weight, height must be correct for proper recommendations</li>
+                        <li>Health symptoms must be honestly reported</li>
+                        <li>Mood and emotional status must be accurately described</li>
+                        <li>Any false information may lead to ineffective or unsafe recommendations</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>3. Not a Medical Service:</h5>
+                    <ul>
+                        <li>SoulCare is NOT a substitute for professional medical diagnosis</li>
+                        <li>Always consult qualified doctors for medical decisions</li>
+                        <li>In case of emergency, call emergency services immediately</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>4. Crisis Management:</h5>
+                    <ul>
+                        <li>If you mention self-harm or suicide, immediate alerts go to doctors and support team</li>
+                        <li>You agree to provide real contact information for safety follow-ups</li>
+                        <li>You grant permission for crisis intervention when necessary</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>5. Liability Disclaimer:</h5>
+                    <p>
+                        SoulCare and its doctors are NOT liable for:
+                    </p>
+                    <ul>
+                        <li>Consequences of following incomplete or incorrect information you provided</li>
+                        <li>Delays in crisis response due to false information</li>
+                        <li>Recommendations based on inaccurate health data</li>
+                        <li>Any adverse health outcomes resulting from false disclosures</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 3. Data Sharing -->
+        <div class='accordion-item'>
+            <h2 class='accordion-header'>
+                <button class='accordion-button collapsed' type='button' data-bs-toggle='collapse' data-bs-target='#sharing'>
+                    🔗 How We Share Your Data
+                </button>
+            </h2>
+            <div id='sharing' class='accordion-collapse collapse' data-bs-parent='#policyAccordion'>
+                <div class='accordion-body'>
+                    <h5>Your data is shared with:</h5>
+                    <ul>
+                        <li><b>✓ Your Assigned Doctor:</b> Full access to your consultations and health data</li>
+                        <li><b>✓ Institute Manager:</b> Anonymous performance metrics and crisis alerts</li>
+                        <li><b>✓ Moderators:</b> Only for verification and quality control</li>
+                        <li><b>✗ Third Parties:</b> NEVER sold or shared without explicit consent</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>You CAN:</h5>
+                    <ul>
+                        <li>Request a copy of all your personal data</li>
+                        <li>Delete your account and all associated data (after 30-day notice)</li>
+                        <li>Opt-out of non-essential communications</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 4. Contact & Rights -->
+        <div class='accordion-item'>
+            <h2 class='accordion-header'>
+                <button class='accordion-button collapsed' type='button' data-bs-toggle='collapse' data-bs-target='#contact'>
+                    📞 Your Rights & Contact Us
+                </button>
+            </h2>
+            <div id='contact' class='accordion-collapse collapse' data-bs-parent='#policyAccordion'>
+                <div class='accordion-body'>
+                    <h5>You have the right to:</h5>
+                    <ul>
+                        <li>Access all your personal data</li>
+                        <li>Correct inaccurate information</li>
+                        <li>Delete your account</li>
+                        <li>File a complaint about privacy practices</li>
+                    </ul>
+                    
+                    <h5 class='mt-3'>Contact Us:</h5>
+                    <p>
+                        <b>Email:</b> privacy@soulcare.com<br>
+                        <b>Phone:</b> +91-1234-567890<br>
+                        <b>Address:</b> SoulCare Mental Health Services, Delhi, India
+                    </p>
+                    
+                    <h5 class='mt-3'>Last Updated:</h5>
+                    <p>November 2, 2025</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <hr class='my-4'>
+    
+    <h5>✅ ACKNOWLEDGMENT:</h5>
+    <form method='post'>
+        {% csrf_token %}
+        <div class='form-check mb-3'>
+            <input class='form-check-input' type='checkbox' name='agree_privacy' id='agree_privacy' required>
+            <label class='form-check-label' for='agree_privacy'>
+                ☑️ I have read and understand the Privacy Policy
+            </label>
+        </div>
+        
+        <div class='form-check mb-3'>
+            <input class='form-check-input' type='checkbox' name='agree_terms' id='agree_terms' required>
+            <label class='form-check-label' for='agree_terms'>
+                ☑️ I have read and accept the Terms of Service
+            </label>
+        </div>
+        
+        <div class='form-check mb-4'>
+            <input class='form-check-input' type='checkbox' name='agree_accuracy' id='agree_accuracy' required>
+            <label class='form-check-label text-danger fw-bold' for='agree_accuracy'>
+                ⚠️ I confirm that ALL information I provide will be ACCURATE and TRUE
+            </label>
+        </div>
+        
+        <button type='submit' class='btn btn-primary btn-lg w-100'>✅ I Agree - Continue to Registration</button>
+    </form>
+</div>
+{% endblock %}

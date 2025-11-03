@@ -1,0 +1,85 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main'>
+    <h2>🏫 Institute Manager Dashboard</h2>
+    
+    <div class='row mb-4'>
+        <div class='col-md-3'>
+            <div class='card p-3 text-center'>
+                <h2>{{ total_students }}</h2>
+                <small>Total Students</small>
+            </div>
+        </div>
+        <div class='col-md-3'>
+            <div class='card p-3 text-center'>
+                <h2 class='text-warning'>{{ pending_students }}</h2>
+                <small>Pending Approval</small>
+            </div>
+        </div>
+        <div class='col-md-3'>
+            <div class='card p-3 text-center'>
+                <h2>{{ total_doctors }}</h2>
+                <small>Approved Doctors</small>
+            </div>
+        </div>
+        <div class='col-md-3'>
+            <div class='card p-3 text-center'>
+                <h2 class='text-danger'>{{ crisis_alerts }}</h2>
+                <small>Crisis Alerts</small>
+            </div>
+        </div>
+    </div>
+    
+    <h4>⏳ Students Pending Approval (ML Flagged)</h4>
+    {% for approval in pending_approvals %}
+    <div class='card p-3 mb-2'>
+        <div class='d-flex justify-content-between align-items-center'>
+            <div>
+                <p class='mb-1'><b>{{ approval.user.get_full_name }}</b> (@{{ approval.user.username }})</p>
+                <p class='mb-1'><small>Email: {{ approval.user.email }}</small></p>
+                <p class='mb-0'>
+                    <span class='badge bg-{{ approval.ml_score|floatformat:2 > 0.7|yesno:"danger,warning" }}'>
+                        ML Score: {{ approval.ml_score|floatformat:2 }}
+                    </span>
+                </p>
+                <p><small class='text-muted'>{{ approval.notes }}</small></p>
+            </div>
+            <div>
+                <form method='post' action='{% url "approve_student" approval.id %}' style='display:inline;'>
+                    {% csrf_token %}
+                    <button type='submit' class='btn btn-success btn-sm'>✅ Approve</button>
+                </form>
+                <form method='post' action='{% url "reject_student" approval.id %}' style='display:inline;'>
+                    {% csrf_token %}
+                    <button type='submit' class='btn btn-danger btn-sm'>❌ Reject</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <p class='text-muted'>No pending approvals 🎉</p>
+    {% endfor %}
+    
+    <h4 class='mt-4'>📊 Leaderboard (Top 10 Students)</h4>
+    <table class='table'>
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Student</th>
+                <th>Points</th>
+                <th>Streak</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in leaderboard %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ student.user.get_full_name }}</td>
+                <td>{{ student.points }}</td>
+                <td>{{ student.check_in_streak }} days 🔥</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

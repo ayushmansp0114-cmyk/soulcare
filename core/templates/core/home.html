@@ -1,0 +1,37 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main text-center'>
+    <h1 class='display-4 mb-3'>🧠 SoulCare</h1>
+    <p class='lead mb-4'>Your 24/7 Mental Health Wellness Companion</p>
+    
+    <div class='row'>
+        <div class='col-md-4 mb-3'>
+            <div class='card p-4'>
+                <h3>👨‍🎓 Student</h3>
+                <p>Track your mental wellness, connect with doctors, earn rewards</p>
+                <a href='{% url "terms_policy" %}' class='btn btn-primary w-100 mb-2'>Start Here</a>
+            </div>
+        </div>
+        <div class='col-md-4 mb-3'>
+            <div class='card p-4'>
+                <h3>👨‍⚕️ Doctor</h3>
+                <p>Manage patient consultations, provide mental health support</p>
+                <a href='{% url "login" %}' class='btn btn-success w-100 mb-2'>Doctor Login</a>
+            </div>
+        </div>
+        <div class='col-md-4 mb-3'>
+            <div class='card p-4'>
+                <h3>🏫 Institute</h3>
+                <p>Manage institutional wellness programs</p>
+                <a href='{% url "login" %}' class='btn btn-info w-100 mb-2'>Manager Login</a>
+            </div>
+        </div>
+    </div>
+    
+    <hr class='my-5'>
+    
+    <p class='text-muted mb-2'>By using SoulCare, you agree to our:</p>
+    <a href='{% url "terms_policy" %}' class='btn btn-outline-secondary btn-sm me-2'>Privacy Policy</a>
+    <a href='{% url "terms_policy" %}' class='btn btn-outline-secondary btn-sm'>Terms of Service</a>
+</div>
+{% endblock %}

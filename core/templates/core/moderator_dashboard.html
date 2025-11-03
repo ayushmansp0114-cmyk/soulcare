@@ -1,0 +1,31 @@
+﻿{% extends 'core/base.html' %}
+
+{% block content %}
+<div class='container-main'>
+    <h2 class='mb-4'>🛡️ Moderator Dashboard</h2>
+    
+    <div class='mb-4'>
+        <span class='badge bg-primary'>Institutes: {{ total_institutes }}</span>
+        <span class='badge bg-success'>Doctors: {{ total_doctors }}</span>
+    </div>
+    
+    <h4 class='mb-3'>🏫 Pending Institutes</h4>
+    {% for inst in pending_institutes %}
+    <div class='card p-3 mb-2'>
+        <b>{{ inst.name }}</b> - {{ inst.registration_number }}
+        <p><small>Manager: {{ inst.manager.get_full_name }}</small></p>
+    </div>
+    {% empty %}
+    <p class='text-muted'>No pending institutes</p>
+    {% endfor %}
+    
+    <h4 class='mb-3 mt-4'>👨‍⚕️ Pending Doctors</h4>
+    {% for doc in pending_doctors %}
+    <div class='card p-3 mb-2'>
+        <b>Dr. {{ doc.user.get_full_name }}</b> - {{ doc.specialization }}
+    </div>
+    {% empty %}
+    <p class='text-muted'>No pending doctors</p>
+    {% endfor %}
+</div>
+{% endblock %}

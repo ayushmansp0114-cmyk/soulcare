@@ -1,0 +1,64 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width: 700px;'>
+    <h2 class='text-center mb-4'>🏫 Institute Registration</h2>
+    <form method='post' enctype='multipart/form-data'>
+        {% csrf_token %}
+        <h5 class='mb-3'>Institute Information</h5>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Institute Name</label>
+            <input type='text' name='name' class='form-control' required>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Registration Number</label>
+            <input type='text' name='registration_number' class='form-control' required>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Address</label>
+            <textarea name='address' class='form-control' rows='3' required></textarea>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Contact Email</label>
+            <input type='email' name='contact_email' class='form-control' required>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Contact Phone</label>
+            <input type='text' name='contact_phone' class='form-control' required>
+        </div>
+        <h5 class='mb-3 mt-4'>Manager Information</h5>
+        <div class='row'>
+            <div class='col-md-6 mb-3'>
+                <label class='form-label fw-bold'>Manager First Name</label>
+                <input type='text' name='first_name' class='form-control' required>
+            </div>
+            <div class='col-md-6 mb-3'>
+                <label class='form-label fw-bold'>Manager Last Name</label>
+                <input type='text' name='last_name' class='form-control' required>
+            </div>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Username</label>
+            <input type='text' name='username' class='form-control' required>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Manager Email</label>
+            <input type='email' name='email' class='form-control' required>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Password</label>
+            <input type='password' name='password' class='form-control' required>
+        </div>
+        <h5 class='mb-3 mt-4'>📄 Document Uploads (ID Card Scanner)</h5>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Manager ID Proof (with photo)</label>
+            <input type='file' name='id_document' class='form-control' accept='image/*' required>
+            <small class='text-muted'>Our AI will scan and verify your ID automatically</small>
+        </div>
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Institute License Document</label>
+            <input type='file' name='license_document' class='form-control' accept='image/*,application/pdf' required>
+        </div>
+        <button type='submit' class='btn btn-primary w-100 btn-lg'>Submit for Approval</button>
+    </form>
+</div>
+{% endblock %}

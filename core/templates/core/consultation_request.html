@@ -1,0 +1,37 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width: 600px;'>
+    <h2 class='text-center mb-4'>👨‍⚕️ Request Doctor Consultation</h2>
+    
+    <form method='post'>
+        {% csrf_token %}
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Select Doctor</label>
+            <select name='doctor' class='form-control' required>
+                <option value=''>Choose a doctor...</option>
+                {% for doctor in doctors %}
+                <option value='{{ doctor.id }}'>Dr. {{ doctor.user.get_full_name }} - {{ doctor.specialization }} ({{ doctor.experience }} years exp)</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>What's bothering you?</label>
+            <textarea name='issue' class='form-control' rows='4' placeholder='Describe your issue...' required></textarea>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Urgency Level</label>
+            <select name='urgency' class='form-control' required>
+                <option value='low'>Low - Can wait a few days</option>
+                <option value='medium'>Medium - Would like to talk soon</option>
+                <option value='high'>High - Need help within 24 hours</option>
+                <option value='critical'>Critical - Need immediate help</option>
+            </select>
+        </div>
+        
+        <button type='submit' class='btn btn-primary btn-lg w-100'>Submit Request</button>
+    </form>
+</div>
+{% endblock %}

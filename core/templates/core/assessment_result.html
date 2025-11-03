@@ -1,0 +1,29 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main text-center'>
+    <h2 class='mb-4'>📊 Assessment Results</h2>
+    <div class='card p-5 mb-4'>
+        <h3 class='fw-bold text-primary'>{{ assessment.severity }}</h3>
+        <p class='lead'>Total Score: {{ assessment.total_score }}</p>
+        <div class='row mt-4'>
+            <div class='col-md-4'>
+                <p class='fw-bold'>Depression</p>
+                <h4>{{ assessment.depression_score }}</h4>
+            </div>
+            <div class='col-md-4'>
+                <p class='fw-bold'>Anxiety</p>
+                <h4>{{ assessment.anxiety_score }}</h4>
+            </div>
+            <div class='col-md-4'>
+                <p class='fw-bold'>Stress</p>
+                <h4>{{ assessment.stress_score }}</h4>
+            </div>
+        </div>
+    </div>
+    <div class='alert alert-info'>
+        <h5>Recommendations</h5>
+        <p>{{ assessment.recommendations }}</p>
+    </div>
+    <a href='{% url "dashboard" %}' class='btn btn-primary'>Back to Dashboard</a>
+</div>
+{% endblock %}

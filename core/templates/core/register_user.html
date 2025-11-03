@@ -1,0 +1,109 @@
+﻿{% extends 'core/base.html' %}
+{% block content %}
+<div class='container-main' style='max-width: 600px;'>
+    <h2 class='text-center mb-4'>📝 Student Registration</h2>
+    
+    {% if messages %}
+        {% for message in messages %}
+        <div class='alert alert-{{ message.tags }} alert-dismissible fade show' role='alert'>
+            {{ message }}
+            <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+        </div>
+        {% endfor %}
+    {% endif %}
+    
+    <form method='post'>
+        {% csrf_token %}
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>First Name *</label>
+            <input type='text' name='first_name' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Last Name *</label>
+            <input type='text' name='last_name' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Username *</label>
+            <input type='text' name='username' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Email *</label>
+            <input type='email' name='email' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Age *</label>
+            <input type='number' name='age' class='form-control' min='10' max='100' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Weight (kg) *</label>
+            <input type='number' name='weight' class='form-control' step='0.1' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Height (cm) *</label>
+            <input type='number' name='height' class='form-control' step='0.1' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Phone *</label>
+            <input type='tel' name='phone' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Institute Code *</label>
+            <input type='text' name='institute_code' class='form-control' placeholder='Get from your institute' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Password *</label>
+            <input type='password' name='password1' class='form-control' required>
+        </div>
+        
+        <div class='mb-3'>
+            <label class='form-label fw-bold'>Confirm Password *</label>
+            <input type='password' name='password2' class='form-control' required>
+        </div>
+        
+        <div class='alert alert-warning mb-3'>
+            <h6 class='fw-bold'>⚠️ IMPORTANT - Data Accuracy:</h6>
+            <p class='mb-0'>
+                <small>
+                The accuracy of your age, weight, and health information is CRITICAL for getting proper 
+                recommendations and doctor consultations. Providing false information may result in:
+                <ul class='mt-2'>
+                    <li>❌ Ineffective health recommendations</li>
+                    <li>❌ Unsafe medical advice</li>
+                    <li>❌ Account suspension or termination</li>
+                </ul>
+                </small>
+            </p>
+        </div>
+        
+        <div class='form-check mb-3'>
+            <input class='form-check-input' type='checkbox' name='agree_terms' id='agree_terms' required>
+            <label class='form-check-label' for='agree_terms'>
+                ☑️ I have read and agree to the <a href='{% url "terms_policy" %}' target='_blank'>Privacy Policy & Terms</a>
+            </label>
+        </div>
+        
+        <div class='form-check mb-4'>
+            <input class='form-check-input' type='checkbox' name='confirm_accuracy' id='confirm_accuracy' required>
+            <label class='form-check-label text-danger fw-bold' for='confirm_accuracy'>
+                ⚠️ I confirm ALL my information is ACCURATE and TRUE
+            </label>
+        </div>
+        
+        <button type='submit' class='btn btn-primary btn-lg w-100'>Register</button>
+    </form>
+    
+    <div class='text-center mt-3'>
+        <p>Already have an account? <a href='{% url "login" %}'>Login here</a></p>
+    </div>
+</div>
+{% endblock %}

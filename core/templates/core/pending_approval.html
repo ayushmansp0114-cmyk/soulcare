@@ -1,0 +1,18 @@
+﻿{% extends 'core/base.html' %}
+
+{% block content %}
+<div class='container-main text-center'>
+    <div class='card p-5'>
+        <h2 class='mb-3'>⏳ Account Pending Approval</h2>
+        <p class='lead mb-3'>Your account is waiting for institute manager approval.</p>
+        
+        <div class='alert alert-info'>
+            <p>Your registration has been analyzed by our ML system.</p>
+            <p>An institute manager will review your details shortly.</p>
+            <p>You'll receive an email once your account is approved!</p>
+        </div>
+        
+        <a href='{% url "logout" %}' class='btn btn-primary'>Logout & Check Back Later</a>
+    </div>
+</div>
+{% endblock %}

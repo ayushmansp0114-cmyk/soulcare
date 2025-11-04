@@ -2,7 +2,7 @@
 from .mental_health_analyzer import analyze_mental_health_text, get_instant_recommendations
 from .models import MentalHealthAlert, InstantRecommendation, UserProfile, Doctor
 
-API_KEY = 'AIzaSyD23s04c58mO4D--QLs-VeWXY1uLvLsDS0'
+API_KEY = 'AIzaSyCXSC42nZ03lzZ_kIB-CzTh3Vf8k9l8SUw'
 MODEL = 'gemini-2.0-flash-exp'
 
 def query_gemini_api(user_text, user):

@@ -28,7 +28,7 @@ from .forms import (
 )
 from .ml_utils import detect_bot_registration, generate_activity_recommendations
 from .mental_health_analyzer import analyze_mental_health_text, get_instant_recommendations
-from .gemini_chatbot import query_gemini_api, chat_with_gemini
+from .gemini_chatbot import query_gemini_api
 
 # ============= BOT DETECTION =============
 
